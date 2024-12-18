@@ -1,6 +1,6 @@
 import xlwings as xl
 import pandas as pd
-from sim_pre import net_classify_power, add_VRM
+from sim_pre import net_classify_power, add_VRM, add_SINK
 
 file_path = ""
 prj_path = ""
@@ -13,4 +13,5 @@ dfs_user = {sheet.name: sheet.used_range.options(pd.DataFrame, header=1, index=F
 wb_user.close()
 
 net_classify_power(dfs=dfs_user, prj_path=prj_path)
-port_add(dfs=dfs_user, prj_path=prj_path)
+add_VRM(dfs=dfs_user, prj_path=prj_path)
+add_SINK(dfs=dfs_user, prj_path=prj_path)
