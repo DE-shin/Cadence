@@ -141,19 +141,19 @@ def add_SINK(dfs, prj_path):
         current = str(row["CURRENT[A]"]).strip()
         pins = str(row["PIN_INDEX"]).strip()
 
-    if "\n" not in nets:  # Single Net
-        command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{nets},{NETGND}}} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}}, -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
-        command += f"    lappend non_existing_sinks {{{refdes}}}\n}}\n"
-        tcl_commands.append(command)
-    else:
-        # PIN 리스트 생성
-        pin_list = [pin.strip() for pin in pins.replace("\n", ",").split(",") if pin.strip()]
+        if "\n" not in nets:  # Single Net
+            command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{nets},{NETGND}}} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}}, -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
+            command += f"    lappend non_existing_sinks {{{refdes}}}\n}}\n"
+            tcl_commands.append(command)
+        else:
+            # PIN 리스트 생성
+            pin_list = [pin.strip() for pin in pins.replace("\n", ",").split(",") if pin.strip()]
 
-        # 두 번째 명령어 생성 (for PositivePin)
-        positive_pins = " ".join([f"{{{pin}}}" for pin in pin_list])  # Format pins as {1} {2} {3}
-        command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{NETGND},{NETGND}}} -positivePin {positive_pins} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}}, -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
-        command += f"    lappend non_existing_pins {{{refdes}_{positive_pins}}}\n}}\n"
-        tcl_commands.append(command)
+            # 두 번째 명령어 생성 (for PositivePin)
+            positive_pins = " ".join([f"{{{pin}}}" for pin in pin_list])  # Format pins as {1} {2} {3}
+            command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{NETGND},{NETGND}}} -positivePin {positive_pins} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}}, -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
+            command += f"    lappend non_existing_pins {{{refdes}_{positive_pins}}}\n}}\n"
+            tcl_commands.append(command)
         
     
     tcl_commands.append("puts \"### ### ### ###\"\n")
