@@ -86,7 +86,7 @@ def port_add(dfs, prj_path):
         pins = str(row["PIN_INDEX"]).strip()
 
         if "\n" not in nets:  # Single Net
-            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{nets}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
+            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{nets,NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
             command += f"    lappend non_existing_vrms {{{refdes}}}\n}}\n"
             tcl_commands.append(command)
         else:  # Multiple Nets
@@ -94,7 +94,7 @@ def port_add(dfs, prj_path):
             first_net = nets.split("\n")[0].strip()
 
             # 첫 번째 명령어 생성 (예외처리)
-            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{first_net}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
+            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{first_net,NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
             command += f"    lappend non_existing_vrms {{{refdes}}}\n}}\n"
             tcl_commands.append(command)
 
