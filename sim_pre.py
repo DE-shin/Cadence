@@ -53,8 +53,14 @@ def classify_power_net(dfs , prj_path) -> None:
     return None
 
 def add_VRM_SINK(dfs, prj_path) -> None:
+    """
+    Generate a TCL script for configuring VRM and SINK elements using the provided dataframes.
 
-    # Inintial Setting
+    Args:
+        dfs (dict): A dictionary containing VRM_List and SINK_List dataframes.
+        prj_path (str): Project path where the TCL script will be saved.
+    """
+    # Initial Setting
     df_vrm = dfs["VRM_List"]
     df_sink = dfs["SINK_List"]
 
@@ -62,72 +68,100 @@ def add_VRM_SINK(dfs, prj_path) -> None:
     df_sink["REF"] = df_sink["REF"].fillna(method="ffill")
 
     # TCL Header Generation
-    tcl_commands = ["# TCL Script for VRM & SINK Configuration\n"]
-    tcl_commands.append("set non_existing_vrms {}\n")
-    tcl_commands.append("set non_exisiting_vrm_pins {}\n")
-    tcl_commands.append("set non_existing_sinks {}\n")
-    tcl_commands.append("set non_exisiting_sink_pins {}\n")
+    tcl_commands = [
+        "# TCL Script for VRM & SINK Configuration\n",
+        "set non_existing_vrms {}\n",
+        "set non_exisiting_vrm_pins {}\n",
+        "set non_existing_sinks {}\n",
+        "set non_exisiting_sink_pins {}\n",
+    ]
 
-    # TCL Body Generation
-    # For VRM
-    for idx, row in df_vrm.iterrows():
+    # TCL Body Generation - For VRM
+    for _, row in df_vrm.iterrows():
         refdes = str(row["REF"]).strip()
         nets = str(row["NET"]).replace(".", "_").strip()
         voltage = str(row["VOLTAGE[V]"]).strip()
         pins = str(row["PIN_INDEX"]).strip()
 
-        # Single Net
-        if "\n" not in nets:
-            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{nets},{NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
-            command += f"    lappend non_existing_vrms {{{refdes}}}\n}}\n"
-            tcl_commands.append(command)
-        # Multiple Net
-        else:
+        if "\n" not in nets:  # Single Net
+            tcl_commands.append(
+                f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} \
+"
+                f"    -net {{{nets},{NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
+                f"    lappend non_existing_vrms {{{refdes}}}\n}}
+"
+            )
+        else:  # Multiple Nets
             first_net = nets.split("\n")[0].strip()
             pin_list = [pin.strip() for pin in pins.replace("\n", ",").split(",") if pin.strip()]
 
-            command = f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} -net {{{first_net},{NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
-            command += f"    lappend non_existing_vrms {{{refdes}}}\n}}\n"
-            tcl_commands.append(command)
+            tcl_commands.append(
+                f"if {{[catch {{sigrity::add pdcVRM -auto -ckt {{{refdes}}} \
+"
+                f"    -net {{{first_net},{NETGND}}} -voltage {{{voltage}}} {{!}}}}]}} {{\n"
+                f"    lappend non_existing_vrms {{{refdes}}}\n}}
+"
+            )
 
             for pin in pin_list:
-                if pin.isdecimal():
-                    pin = str(int(pin))
-                command = f"if {{[catch {{sigrity::link pdcElem {{VRM_{refdes}_{first_net}_{NETGND}}} {{Positive Pin}}   {{-Circuit {{{refdes}}} -Node {{{pin}}}}} -LinkCktNode {{!}}}}]}} {{\n"
-                command += f"    lappend non_existing_vrm_pins {{{refdes}_{pin}}}\n}}\n"
-                tcl_commands.append(command)
-    
-    # For SINK
-    for idx, row in df_sink.iterrows():
+                pin = str(int(pin)) if pin.isdecimal() else pin
+                tcl_commands.append(
+                    f"if {{[catch {{sigrity::link pdcElem {{VRM_{refdes}_{first_net}_{NETGND}}} \
+"
+                    f"    {{Positive Pin}} -Circuit {{{refdes}}} -Node {{{pin}}} -LinkCktNode {{!}}}}]}} {{\n"
+                    f"    lappend non_existing_vrm_pins {{{refdes}_{pin}}}\n}}
+"
+                )
+
+    # TCL Body Generation - For SINK
+    for _, row in df_sink.iterrows():
         refdes = str(row["REF"]).strip()
         nets = str(row["NET"]).replace(".", "_").strip()
         current = str(row["CURRENT[A]"]).strip()
         pins = str(row["PIN_INDEX"]).strip()
 
-        # Single Net
-        if "\n" not in nets:
-            command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{nets},{NETGND}}} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}} -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
-            command += f"    lappend non_existing_sinks {{{refdes}}}\n}}\n"
-            tcl_commands.append(command)
-        # Multiple Net
-        else:
+        if "\n" not in nets:  # Single Net
+            tcl_commands.append(
+                f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} \
+"
+                f"    -net {{{nets},{NETGND}}} -model {{Equal Current}} \
+"
+                f"    -current {{{current}}} -upperTolerance {{5,%}} \
+"
+                f"    -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
+                f"    lappend non_existing_sinks {{{refdes}}}\n}}
+"
+            )
+        else:  # Multiple Nets
             pin_list = [pin.strip() for pin in pins.replace("\n", ",").split(",") if pin.strip()]
-            positive_pins = " ".join([f"{{{str(int(pin)) if pin.isdecimal() else pin}}}" for pin in pin_list])
+            positive_pins = " ".join(
+                [f"{{{str(int(pin)) if pin.isdecimal() else pin}}}" for pin in pin_list]
+            )
 
-            command = f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} -net {{{NETGND},{NETGND}}} -positivePin {positive_pins} -model {{Equal Current}} -current {{{current}}} -upperTolerance {{5,%}} -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
-            command += f"    lappend non_existing_sink_pins {{{refdes}_{positive_pins}}}\n}}\n"
-            tcl_commands.append(command)
+            tcl_commands.append(
+                f"if {{[catch {{sigrity::add pdcSink -auto -ckt {{{refdes}}} \
+"
+                f"    -net {{{NETGND},{NETGND}}} -positivePin {positive_pins} \
+"
+                f"    -model {{Equal Current}} -current {{{current}}} \
+"
+                f"    -upperTolerance {{5,%}} -lowerTolerance {{5,%}} {{!}}}}]}} {{\n"
+                f"    lappend non_existing_sink_pins {{{refdes}_{positive_pins}}}\n}}
+"
+            )
 
     # TCL Trailer
-    tcl_commands.append("puts \"### ### ### ###\"\n")
-    tcl_commands.append("puts \"Non Existing VRMs: $non_existing_vrms\"\n")
-    tcl_commands.append("puts \"Non Existing Pins: $non_existing_vrm_pins\"\n")
-    tcl_commands.append("puts \"### ### ### ###\"\n")
-    tcl_commands.append("puts \"Non Existing VRMs: $non_existing_sinks\"\n")
-    tcl_commands.append("puts \"Non Existing Pins: $non_existing_sink_pins\"\n")
-    tcl_commands.append("puts \"### ### ### ###\"\n")
+    tcl_commands.extend([
+        "puts \"### ### ### ###\"\n",
+        "puts \"Non Existing VRMs: $non_existing_vrms\"\n",
+        "puts \"Non Existing Pins: $non_existing_vrm_pins\"\n",
+        "puts \"### ### ### ###\"\n",
+        "puts \"Non Existing SINKs: $non_existing_sinks\"\n",
+        "puts \"Non Existing Pins: $non_existing_sink_pins\"\n",
+        "puts \"### ### ### ###\"\n",
+    ])
 
-    # Save TCL Command
+    # Save TCL Script
     tcl_script_path = os.path.join(prj_path, "Scripts", "add_VRM_SINK.tcl")
     os.makedirs(os.path.dirname(tcl_script_path), exist_ok=True)
 
@@ -135,8 +169,9 @@ def add_VRM_SINK(dfs, prj_path) -> None:
         f.writelines(tcl_commands)
 
     print(f"TCL Script Generated to {tcl_script_path}")
-    
+
     return None
+
 
 def add_DCR(dfs, prj_path) -> None:
     """
