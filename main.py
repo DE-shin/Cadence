@@ -1,6 +1,6 @@
 import xlwings as xl
 import pandas as pd
-from sim_pre import net_classify_power, port_add
+from sim_pre import net_classify_power, add_VRM
 
 file_path = ""
 prj_path = ""
