@@ -95,7 +95,7 @@ def add_VRM(dfs, prj_path):
 
             # 두 번째 명령어 생성
             for pin in pin_list:
-                command = f"if {{[catch {{sigrity::link pdcElem {{VRM_{refdes}_{first_net}_{netgnd}}} {{PositivePin}}  {{-Circuit {{{refdes}}} -Node {{{pin}}}}} -LinkCktNode {{!}}}}]}} {{\n"
+                command = f"if {{[catch {{sigrity::link pdcElem {{VRM_{refdes}_{first_net}_{NETGND}}} {{Positive Pin}}   {{-Circuit {{{refdes}}} -Node {{{pin}}}}} -LinkCktNode {{!}}}}]}} {{\n"
                 command += f"    lappend non_existing_pins {{{refdes}_{pin}}}\n}}\n"
                 tcl_commands.append(command)
 
