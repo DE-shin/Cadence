@@ -1,6 +1,6 @@
 import xlwings as xl
 import pandas as pd
-from sim_pre import net_classify_power, add_VRM, add_SINK
+from sim_pre import classify_power_net, add_VRM_SINK, add_DCR
 
 file_path = ""
 prj_path = ""
@@ -12,6 +12,6 @@ dfs_user = {sheet.name: sheet.used_range.options(pd.DataFrame, header=1, index=F
 
 wb_user.close()
 
-net_classify_power(dfs=dfs_user, prj_path=prj_path)
-add_VRM(dfs=dfs_user, prj_path=prj_path)
-add_SINK(dfs=dfs_user, prj_path=prj_path)
+classify_power_net(dfs=dfs_user, prj_path=prj_path)
+add_VRM_SINK(dfs=dfs_user, prj_path=prj_path)
+add_DCR(dfs=dfs_user, prj_path=prj_path)
