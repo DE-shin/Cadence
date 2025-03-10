@@ -1,17 +1,21 @@
-import xlwings as xl
-import pandas as pd
-from sim_pre import classify_power_net, add_VRM_SINK, add_DCR
+import logging
+from tcl import pre_sim
+from report import post_sim
 
-file_path = ""
-prj_path = ""
+# Logger Settings
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    filename="tcl.log",
+    filemode="w"
+)
 
-wb_user = xl.Book(file_path)
+# Paths
+ETL_FILE_PATH = ""
+TCL_FOLDER_PATH = ""
+HTML_FILE_PATH = ""
+REPORT_FOLDER_PATH = ""
 
-sheets_user = wb_user.sheets
-dfs_user = {sheet.name: sheet.used_range.options(pd.DataFrame, header=1, index=False).value for sheet in sheets_user}
-
-wb_user.close()
-
-classify_power_net(dfs=dfs_user, prj_path=prj_path)
-add_VRM_SINK(dfs=dfs_user, prj_path=prj_path)
-add_DCR(dfs=dfs_user, prj_path=prj_path)
+pre_sim(ETL_FILE_PATH, TCL_FOLDER_PATH)
+post_sim(HTML_FILE_PATH, REPORT_FOLDER_PATH)
