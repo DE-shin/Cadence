@@ -1,6 +1,5 @@
-import win32com.client
-import pythoncom
 import pandas as pd
+import xlwings as xw
 import base64
 import os
 from bs4 import BeautifulSoup
@@ -11,76 +10,99 @@ import logging
 logger = logging.getLogger(__name__)
 
 def post_sim(HTML_FILE_PATH, REPORT_FOLDER_PATH):
+    try:
+        with open(os.path.normpath(HTML_FILE_PATH), "r", encoding="utf-8") as f:
+            html_content = f.read()
+        report = BeautifulSoup(html_content, "html.parser")
+    except Exception as e:
+        logger.error(f"Error reading HTML file: {e}")
+        return
 
-    # Read report.htm
-    with open(os.path.normpath(HTML_FILE_PATH), "r", encoding="utf-8") as f:
-        html_content = f.read()
+    try:
+        table_setups = report.select("ElectricalSetup table")
+        table_setup = str(table_setups[2])
+        df_setup = pd.read_html(StringIO(table_setup), header=0)[0]
 
-    report = BeautifulSoup(html_content, "html.parser")
+        table_results = report.select("ElectricalResultsTable table")
+        table_result = str(table_results[2])
+        df_result = pd.read_html(StringIO(table_result), header=0)[0]
 
-    # Parsing Table Datas
-    table_setups = report.select("ElectricalSetup table")
-    table_setup = str(table_setups[2])
-    df_setup = pd.read_html(StringIO(table_setup), header=0)[0]
+        common_columns = df_setup.columns.intersection(df_result.columns)
+        df_merged = pd.merge(df_setup, df_result, on=list(common_columns), how="inner")
 
-    table_results = report.select("ElectricalResultsTable table")
-    table_result = str(table_results[2])
-    df_result = pd.read_html(StringIO(table_result), header=0)[0]
+        df_new = df_merged.iloc[:, [1, 0, 2, 5, 14, 15, 16]].reset_index(drop=True)
+        df_new[df_new.columns[0]] = df_new[df_new.columns[0]].str.replace("SINK_", "")
+        df_new[df_new.columns[2]] = df_new[df_new.columns[2]].astype(str).str.split("-").str[0]
+    except Exception as e:
+        logger.error(f"Error processing tables: {e}")
+        return
 
-    # Processing Tables
-    common_columns = df_setup.columns.intersection(df_result.columns)
-    df_merged = pd.merge(df_setup, df_result, on=list(common_columns), how="inner")
+    try:
+        excel = xw.App(visible=False)
+        wb = excel.books.add()
+        ws = wb.sheets["Sheet1"]
 
-    df_new = df_merged.iloc[:, [1, 0, 2, 5, 14, 15, 16]].reset_index(drop=True)
-    df_new[df_new.columns[0]] = df_new[df_new.columns[0]].str.replace("SINK_", "")
-    df_new[df_new.columns[2]] = df_new[df_new.columns[2]].astype(str).str.split("-").str[0]
+        ws.range("A1").value = [df_new.columns.tolist()] + df_new.values.tolist()
 
-    pythoncom.CoInitialize()
-    excel = win32com.client.Dispatch("Excel.Application")
-    excel.Visible = False
-    excel.DisplayAlerts = False
+        last_row = ws.range("A1").end("down").row
+        last_col = ws.range("A1").end("right").column
 
-    wb = excel.Workbooks.Add()
-    ws = wb.Worksheets(1)
+        data_range = ws.range(f"A1:{ws.range((1, last_col)).address}")
+        header_range = ws.range(f"A1:{ws.range((1, last_col)).address}")
+        pass_fail_range = ws.range(f"F2:F{last_row}")
 
-    for r_idx, row in enumerate(df_new.itertuples(index=False, name=None), 2):
-        for c_idx, value in enumerate(row, 1):
-            ws.Cells(r_idx, c_idx).Value = value
+        header_range.color = (204, 255, 153)
+        data_range.api.Borders.Weight = 1
+        data_range.api.Font.Name = "현대하모니 L"
+        data_range.api.Font.Size = 16
 
-    for c_idx, col_name in enumerate(df_new.columns, 1):
-        ws.Cells(1, c_idx).Value = col_name
+        for cell in pass_fail_range:
+            if cell.value == "Fail":
+                row_range = ws.range(f"A{cell.row}:{ws.range((cell.row, last_col)).address}")
+                row_range.color = (255, 204, 204)
+                row_range.api.Font.Color = -16776961
 
-    font_name = "현대하모니 L"
-    font_size = 16
+        prev_value = None
+        merge_start = 2
+        for row in range(2, last_row + 1):
+            current_value = ws.range(f"A{row}").value
+            if current_value == prev_value:
+                ws.range(f"A{merge_start}:A{row}").merge()
+            else:
+                merge_start = row
+            prev_value = current_value
 
-    for cell in ws.UsedRange:
-        cell.Font.Name = font_name
-        cell.Font.Size = font_size
-        cell.Borders.LineStyle = 1
+        wb.save("styled_output.xlsx")
+    except Exception as e:
+        logger.error(f"Error saving Excel file: {e}")
+    finally:
+        excel.quit()
 
-    wb.SaveAs(os.path.normpath(os.path.join(REPORT_FOLDER_PATH, "report.xlsx")))
-    wb.Close(False)
-    excel.Quit()
-    del excel
-    pythoncom.CoUninitialize()
+    try:
+        layers = ["ImageLayoutTop", "ImageLayoutBottom"]
+        for layer in layers:
+            image_element = report.select_one(f"#{layer} img")
+            if image_element and "src" in image_element.attrs:
+                image_data_url = image_element["src"]
+                base64_data = image_data_url.split(",")[1]
+                image_data = base64.b64decode(base64_data)
+                image = Image.open(BytesIO(image_data))
+                image.save(os.path.normpath(os.path.join(REPORT_FOLDER_PATH, f"{layer}.png")))
+        logging.info("Saved Top/Bottom Images")
+    except Exception as e:
+        logger.error(f"Error saving Top/Bottom images: {e}")
 
-    # Parsing Images
-    layers = ["ImageLayoutTop", "ImageLayoutBottom"]
-    for layer in layers:
-        image_element = report.select_one(f"#{layer} img")
-        if image_element:
-            mage_data_url = img["src"]
-            base64_data = image_data_url.split(",")[1]
-            image_data = base64.b64decode(base64_data)
-            image = Image.open(BytesIO(image_data))
-            image.save(os.path.normpath(os.path.join(REPORT_FOLDER_PATH, f"{layer}.png")))
-
-    image_plot = report.select("#DistributionPlot p img")
-    for idx, img in enumerate(image_plot):
-        image_data_url = img["src"]
-        base64_data = image_data_url.split(",")[1]
-        image_data = base64.b64decode(base64_data)
-        image = Image.open(BytesIO(image_data))
-        image.save(os.path.normpath(os.path.join(REPORT_FOLDER_PATH, f"Layer_{idx+1}.png")))
+    try:
+        image_plot = report.select("#DistributionPlot p img")
+        for idx, img in enumerate(image_plot):
+            if "src" in img.attrs:
+                image_data_url = img["src"]
+                base64_data = image_data_url.split(",")[1]
+                image_data = base64.b64decode(base64_data)
+                image = Image.open(BytesIO(image_data))
+                image.save(os.path.normpath(os.path.join(REPORT_FOLDER_PATH, f"Layer_{idx+1}.png")))
+        logging.info("Saved Layer Images")
+    except Exception as e:
+        logger.error(f"Error saving Layer images: {e}")
 
     return None
