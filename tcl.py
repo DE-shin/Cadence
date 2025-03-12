@@ -1,13 +1,13 @@
-import win32com.client
-import pythoncom
+import xlwings as xw
 import pandas as pd
 import numpy as np
 import os
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 def cadence_translate(dfs):
+    logger.info("Translating for Cadence...")
     try:
         for sheet_name, df in dfs.items():
             df = df.map(lambda x: x.replace(" ", "").replace("\n", ","))
@@ -18,51 +18,53 @@ def cadence_translate(dfs):
 
         dfs["vrm"][["index", "pin"]] = dfs["vrm"][["index", "pin"]].map(lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
         dfs["sink"][["index", "pin"]] = dfs["sink"][["index", "pin"]].map(lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
-        dfs["disc"][["subnet", "net"]] = dfs["disc"][["subnet", "net"]].apply(lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
     except Exception as e:
         logger.error(f"Error in cadence_translate: {e}")
+
+    logger.info("Translating Complete!\n")
     return dfs
 
 def pre_sim(ETL_FILE_PATH, TCL_FOLDER_PATH):
+    logger.info("Initializing Excel...")
     try:
-        logging.info("Excel Initializing...")
-        pythoncom.CoInitialize()
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        wb = excel.Workbooks.Open(ETL_FILE_PATH)
+        app = xw.App(visible=False)
+        wb = app.books.open(ETL_FILE_PATH)
     except Exception as e:
         logger.error(f"Error initializing Excel: {e}")
-        return None
+    logger.info("Initializing Complete!\n")
 
+    logger.info("Reading Datas from Excel...")
     try:
         dfs = {}
         for sheet in wb.Sheets:
             data = np.array(sheet.UsedRange.Value)
             try:
-                if sheet.Name == "vrm":
+                if sheet.name == "vrm":
                     df = pd.DataFrame(data=data[1:, :6], columns=data[0, :6])
-                elif sheet.Name == "sink":
+                elif sheet.name == "sink":
                     df = pd.DataFrame(data=data[1:, :8], columns=data[0, :8])
-                elif sheet.Name == "disc":
+                elif sheet.name == "disc":
                     df = pd.DataFrame(data=data[1:, :5], columns=data[0, :5])
                 else:
                     continue
+
                 df = df.replace("", np.nan).ffill().astype(str)
-                dfs[sheet.Name] = df
+                dfs[sheet.name] = df
             except Exception as e:
                 logger.error(f"Error processing sheet {sheet.Name}: {e}")
+
     except Exception as e:
         logger.error(f"Error reading Excel file: {e}")
     finally:
-        logging.info("Excel Closing...")
+        logging.info("Reading Complete...!")
         wb.Close(False)
-        excel.Quit()
-        pythoncom.CoUninitialize()
+        app.quit()
 
     # Data Pre-processing for each Tool
     dfs = cadence_translate(dfs)
     
     # TCL Script Generation
+    logger.info("Generating TCL scripts...")
     # 1. Classify Power/Gnd Net
     nets = set()
     GND = "M_GND"
@@ -155,14 +157,19 @@ def pre_sim(ETL_FILE_PATH, TCL_FOLDER_PATH):
         "puts \"Error DISCs : $error_DISC\"\n",
         "puts \"-----------------------------------------\"\n"
     ])
+    logger.info("Generating Complete!")
+
 
     try:
-        logging.info("Saving TCLs...")
+        logging.info("Saving TCL scripts...")
         with open(os.path.normpath(os.path.join(TCL_FOLDER_PATH, "classify.tcl")), "w") as f:
-            f.writelines("Sample TCL content for classify.tcl")
+            f.writelines(classify_tcl_commands)
+            logger.info(f"Saved : {os.path.normpath(os.paht.join(TCL_FOLDER_PATH, "classify.tcl"))}")
+
         with open(os.path.normpath(os.path.join(TCL_FOLDER_PATH, "add.tcl")), "w") as f:
-            f.writelines("Sample TCL content for add.tcl")
-        logging.info("Saved TCLs")
+            f.writelines(add_tcl_commands)
+            logger.info(f"Saved : {os.path.normpath(os.paht.join(TCL_FOLDER_PATH, "add.tcl"))}")
+
     except Exception as e:
         logger.error(f"Error saving TCL scripts: {e}")
 
