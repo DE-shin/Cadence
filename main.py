@@ -28,4 +28,4 @@ if __name__ == "__main__":
 
     pdc_presim(GND_NAME, ETL_PDC_FILE_PATH)
     psi_presim(GND_NAME, ETL_PSI_FILE_PATH)
-    pdc_postsim(REPORT_FILE_PATH, OUTPUT_FOLDER_PATH)
+    pdc_postsim(REPORT_FILE_PATH, REPORT_FOLDER_PATH)
