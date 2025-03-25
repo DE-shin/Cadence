@@ -154,7 +154,7 @@ class PdcPresim:
             self.add_tcl_commands.extend([
                 "if {\n",
                 "    [catch {sigrity::link pdcElem " +
-                f"{{{sink_port}}} {{Positive Pin}} {{-Circuit {{{sink_refdes}}} -Node {{{sink_pin}}}}} -LinkCktNode {{!}}}]\n",
+                f"{{{sink_port}}} {{Positive Pin}} {{-Circuit {{{sink_refdes}}} -Node {{{sink_pin}}}}} -LinkCktNode {{!}}]\n",
                 "} {\n",
                 f"    lappend error_SINK {{{sink_refdes}: {sink_pin}}}\n",
                 "}\n"
@@ -249,7 +249,7 @@ class PsiPresim:
                 f"catch {{sigrity::update net {{PowerGndPair}} {{{self.gnd}}} {{{net}}} {{!}}}}\n"
             )
         self.classify_tcl_commands.extend([
-            "sigrity::save {¡}\n",
+            "sigrity::save {!}\n",
             "puts \n\"=============================================\"\n",
             "puts \"Error Nets : $error_nets\"\n",
             "puts \n\"=============================================\"\n"
@@ -278,17 +278,17 @@ class PsiPresim:
 
             self.add_tcl_commands.extend([
                 "if  {\n",
-                f"    [catch {{sigrity::add port -name {{{vrm_port}}} {{¡}}}}]\n",
+                f"    [catch {{sigrity::add port -name {{{vrm_port}}} {{!}}}}]\n",
                 "} {\n",
                 f"    lappend error_ports {{{vrm_port}}}\n",
                 "}\n",
-                f"catch {{sigrity::update -name {{{vrm_port}}} -refZ {{1}} {{¡}}}}\n"
+                f"catch {{sigrity::update -name {{{vrm_port}}} -refZ {{1}} {{!}}}}\n"
             ])
 
             for pp in vrm_pps.split(","):
                 self.add_tcl_commands.extend([
                     "if  {\n",
-                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -pn {{{pp}}} {{¡}}}}]\n",
+                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -pn {{{pp}}} {{!}}}}]\n",
                     "} {\n",
                     f"    lappend error_pins {{{pp}}}\n",
                     "}\n"
@@ -297,7 +297,7 @@ class PsiPresim:
             for np_val in vrm_nps.split(","):
                 self.add_tcl_commands.extend([
                     "if  {\n",
-                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -nn {{{np_val}}} {{¡}}}}]\n",
+                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -nn {{{np_val}}} {{!}}}}]\n",
                     "} {\n",
                     f"    lappend error_pins {{{np_val}}}\n",
                     "}\n"
@@ -315,17 +315,17 @@ class PsiPresim:
 
             self.add_tcl_commands.extend([
                 "if  {\n",
-                f"    [catch {{sigrity::add port -name {{{sink_port}}} {{¡}}}}]\n",
+                f"    [catch {{sigrity::add port -name {{{sink_port}}} {{!}}}}]\n",
                 "} {\n",
                 f"    lappend error_ports {{{sink_port}}}\n",
                 "}\n",
-                f"catch {{sigrity::update -name {{{sink_port}}} -refZ {{1}} {{¡}}}}\n"
+                f"catch {{sigrity::update -name {{{sink_port}}} -refZ {{1}} {{!}}}}\n"
             ])
 
             for pp in sink_pps.split(","):
                 self.add_tcl_commands.extend([
                     "if  {\n",
-                    f"    [catch {{sigrity::hook port -name {{{sink_port}}} -c {{{sink_refdes}}} -pn {{{pp}}} {{¡}}}}]\n",
+                    f"    [catch {{sigrity::hook port -name {{{sink_port}}} -c {{{sink_refdes}}} -pn {{{pp}}} {{!}}}}]\n",
                     "} {\n",
                     f"    lappend error_pins {{{pp}}}\n",
                     "}\n"
@@ -365,7 +365,7 @@ class PsiPresim:
 
             self.nc_tcl_commands.extend([
                 "if  {\n",
-                f"    [catch {{sigrity::update circuit -model {{disable}} {{{nc_comp}}} {{¡}}}}]\n",
+                f"    [catch {{sigrity::update circuit -model {{disable}} {{{nc_comp}}} {{!}}}}]\n",
                 "} {\n",
                 f"    lappend error_components {{{nc_comp}}}\n",
                 "}\n"

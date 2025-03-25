@@ -3,4 +3,18 @@ name = "cadence"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "beautifulsoup4==4.13.3",
+    "bs4==0.0.2",
+    "numpy==2.2.4",
+    "pandas==2.2.3",
+    "pillow==11.1.0",
+    "python-dateutil==2.9.0.post0",
+    "pytz==2025.2",
+    "pywin32==310",
+    "six==1.17.0",
+    "soupsieve==2.6",
+    "typing-extensions==4.12.2",
+    "tzdata==2025.2",
+    "xlwings==0.33.11",
+]

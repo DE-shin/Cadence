@@ -105,30 +105,29 @@ class pdc_postsim:
     def extract_images(self):
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 실행 중")
 
-        # Top/Bottem Layer 사진 추출
-        layers = ["ImageLayoutTop", "ImageLayoutBottom"]
+        # 이미지 decode 후 저장 함수
+        def _save_image_from_data_url(data_url, save_path):
+            try:
+                base64_data = data_url.split(",")[1]
+                image_data = base64.b64decode(base64_data)
+                image = Image.open(BytesIO(image_data))
+                image.save(save_path)
+            except Exception as e:
+                logger.error(f"이미지 추출 실패: {e}")
 
-        for layer in layers:
+        # Top/Bottom Layer 사진 추출
+        for layer in ["ImageLayoutTop", "ImageLayoutBottom"]:
             image_element = self.report.select_one(f"#{layer} img")
             if image_element and "src" in image_element.attrs:
-                image_data_url = image_element["src"]
-                base64_data = image_data_url.split(",")[1]
-                image_data = base64.b64decode(base64_data)
-                image = Image.open(BytesIO(image_data))
-
-                image.save(os.path.join(self.output_pic_folder_path, f"{layer}.png"))
+                save_path = os.path.join(self.output_pic_folder_path, f"{layer}.png")
+                _save_image_from_data_url(image_element["src"], save_path)
 
         # Distribution Plot 사진 추출
-        image_plot = self.report.select("#DistributionPlot p img")
-
-        for idx, img in enumerate(image_plot):
+        image_plots = self.report.select("#DistributionPlot p img")
+        for idx, img in enumerate(image_plots):
             if "src" in img.attrs:
-                image_data_url = img["src"]
-                base64_data = image_data_url.split(",")[1]
-                image_data = base64.b64decode(base64_data)
-                image = Image.open(BytesIO(image_data))
-
-                image.save(os.path.join(self.output_pic_folder_path, f"Layer_{idx+1}.png"))
+                save_path = os.path.join(self.output_pic_folder_path, f"Layer_{idx+1}.png")
+                _save_image_from_data_url(img["src"], save_path)
 
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 완료")
         return None
