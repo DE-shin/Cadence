@@ -1,18 +1,41 @@
 import xlwings as xw
 import pandas as pd
 import numpy as np
-import os
+from pathlib import Path
 import logging
 import inspect
 
 logger = logging.getLogger()
 
+# ETL 엑셀 파일 읽는 공통 함수
+def _read_excel(etl_file_path):
+    """
+    엑셀 파일을 읽어 각 시트를 DataFrame으로 변환한 후 전처리하여 반환합니다.
+    """
+    app = xw.App(visible=False)
+    wb = app.books.open(etl_file_path)
+    dfs = {
+        sheet.name: sheet.used_range.options(pd.DataFrame, header=1, index=False).value.apply(lambda col: col.map(str))
+        for sheet in wb.sheets
+    }
+    for sheet_name, df in dfs.items():
+        df = (
+            df.replace("", np.nan)
+            .ffill()
+            .astype(str, errors="ignore")
+            .replace({" ": "", "\n": ","}, regex=True)
+        )
+        dfs[sheet_name] = df
+    wb.close()
+    app.quit()
+    return dfs
+
 # PowerDC
-class pdc_presim:
+class PdcPresim:
     def __init__(self, GND_NAME, ETL_FILE_PATH):
         # 상수
         self.gnd = GND_NAME
-        self.etl_file_path = ETL_FILE_PATH
+        self.etl_file_path = Path(ETL_FILE_PATH)
 
         # 변수
         self.dfs = dict()
@@ -29,37 +52,16 @@ class pdc_presim:
     def initialize(self):
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 실행 중")
 
-        # 엑셀 파일 읽기 (xlwings)
-        app = xw.App(visible=False)
-        wb = app.books.open(self.etl_file_path)
-
-        for sheet in wb.Sheets:
-            data = np.array(sheet.UsedRange.Value)
-
-            if sheet.name == "vrm":
-                df = pd.DataFrame(data=data[1:, :6], columns=data[0, :6])
-            elif sheet.name == "sink":
-                df = pd.DataFrame(data=data[1:, :8], columns=data[0, :8])
-            elif sheet.name == "disc":
-                df = pd.DataFrame(data=data[1:, :5], columns=data[0, :5])
-            else:
-                pass
-
-            df = df.replace("", np.nan).ffill().astype(str)
-            self.dfs[sheet.name] = df
-
-        wb.close()
-        app.quit()
+        self.dfs = _read_excel(self.etl_file_path)
 
         # Cadence net 표기에 맞게 수정
-        for sheet_name, df in self.dfs.items():
-            df = df.map(lambda x: x.replace(" ", "").replace("\n", ","))
-            self.dfs[sheet_name] = df
-
         self.dfs["vrm"][["subnet", "net"]] = self.dfs["vrm"][["subnet", "net"]].apply(lambda x: x.str.replace(".", "_"))
+        self.dfs["vrm"][["index", "pin"]] = self.dfs["vrm"][["index", "pin"]].map(
+            lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
+
         self.dfs["sink"][["subnet", "net"]] = self.dfs["sink"][["subnet", "net"]].apply(lambda x: x.str.replace(".", "_"))
-        self.dfs["vrm"][["index", "pin"]] = self.dfs["vrm"][["index", "pin"]].map(lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
-        self.dfs["sink"][["index", "pin"]] = self.dfs["sink"][["index", "pin"]].map(lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
+        self.dfs["sink"][["index", "pin"]] = self.dfs["sink"][["index", "pin"]].map(
+            lambda x: str(int(float(x))) if x.replace(".", "", 1).isdigit() and float(x).is_integer() else x)
 
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 완료")
         return None
@@ -82,8 +84,12 @@ class pdc_presim:
                 df["subnet"].apply(lambda x: nets.update(x.split(",")))
 
         for net in nets:
-            self.classify_tcl_commands.append(f" if {{[catch {{sigrity::move net {{PowerNets}} {{{net}}} {{!}}}}]}} {{\n lappend error_nets {{{net}}}\n}}\n")
-            self.classify_tcl_commands.append(f"catch {{sigrity::update net {{PowerGndPair}} {{{self.gnd}}} {{{net}}} {{!}}}}\n")
+            self.classify_tcl_commands.append(
+                f" if {{[catch {{sigrity::move net {{PowerNets}} {{{net}}} {{!}}}}]}} {{\n lappend error_nets {{{net}}}\n}}\n"
+            )
+            self.classify_tcl_commands.append(
+                f"catch {{sigrity::update net {{PowerGndPair}} {{{self.gnd}}} {{{net}}} {{!}}}}\n"
+            )
         self.classify_tcl_commands.extend([
             f"sigrity::save {{!}}\n",
             "puts \n\"=============================================\"\n",
@@ -114,16 +120,19 @@ class pdc_presim:
             vrm_port = f"VRM_{vrm_refdes}_{vrm_net}"
 
             self.add_tcl_commands.append(
-                f"catch {{sigrity::add pdcVRM -m -name {{{vrm_port}}} -voltage {{{vrm_v}}} {{!}}}}\n")
+                f"catch {{sigrity::add pdcVRM -m -name {{{vrm_port}}} -voltage {{{vrm_v}}} {{!}}}}\n"
+            )
             self.add_tcl_commands.append(
-                f"catch {{sigrity::link pdcElem {{{vrm_port}}} {{Negative Pin}} {{-Circuit {{{vrm_refdes}}} -Net {{{self.gnd}}}}} -LinkCktNode {{!}}}}\n")
+                f"catch {{sigrity::link pdcElem {{{vrm_port}}} {{Negative Pin}} {{-Circuit {{{vrm_refdes}}} -Net {{{self.gnd}}}}} -LinkCktNode {{!}}}}\n"
+            )
             for vrm_pin in vrm_pins:
                 self.add_tcl_commands.extend([
                     f"if {{\n",
-                    f"    [catch {{sigrity::link pdcElem {{{vrm_port}}} {{Positive Pin}} {{-Circuit {{{vrm_refdes}}} -Node {{{vrm_pin}}}}} -LinkCktNode {{!}}}}]\n",
-                    f"}} {{\n",
+                    "    [catch {sigrity::link pdcElem " +
+                    f"{{{vrm_port}}} {{Positive Pin}} {{-Circuit {{{vrm_refdes}}} -Node {{{vrm_pin}}}}} -LinkCktNode {{!}}}}]\n",
+                    "} {\n",
                     f"    lappend error_vrms {{{vrm_refdes}: {vrm_pin}}}\n",
-                    f"}}\n"
+                    "}\n"
                 ])
 
         # sink sheet
@@ -136,16 +145,19 @@ class pdc_presim:
             sink_port = f"SINK_{sink_refdes}_{sink_net}"
 
         self.add_tcl_commands.append(
-            f"catch {{sigrity::add pdcSINK -m -name {{{sink_port}}} -current {{{sink_i}}} -lt {{5,%}} -ut {{5,%}} -model {{Equal Current}} {{!}}}}\n")
+            f"catch {{sigrity::add pdcSINK -m -name {{{sink_port}}} -current {{{sink_i}}} -lt {{5,%}} -ut {{5,%}} -model {{Equal Current}} {{!}}}}\n"
+        )
         self.add_tcl_commands.append(
-            f"catch {{sigrity::link pdcElem {{{sink_port}}} {{Negative Pin}} {{-Circuit {{{sink_refdes}}} -Net {{{self.gnd}}}}} -LinkCktNode {{!}}}}\n")
+            f"catch {{sigrity::link pdcElem {{{sink_port}}} {{Negative Pin}} {{-Circuit {{{sink_refdes}}} -Net {{{self.gnd}}}}} -LinkCktNode {{!}}}}\n"
+        )
         for sink_pin in sink_pins:
             self.add_tcl_commands.extend([
-                f"if {{\n",
-                f"    [catch {{sigrity::link pdcElem {{{sink_port}}} {{Positive Pin}} {{-Circuit {{{sink_refdes}}} -Node {{{sink_pin}}}}} -LinkCktNode {{!}}}}]\n",
-                f"}} {{\n",
+                "if {\n",
+                "    [catch {sigrity::link pdcElem " +
+                f"{{{sink_port}}} {{Positive Pin}} {{-Circuit {{{sink_refdes}}} -Node {{{sink_pin}}}}} -LinkCktNode {{!}}}]\n",
+                "} {\n",
                 f"    lappend error_SINK {{{sink_refdes}: {sink_pin}}}\n",
-                f"}}\n"
+                "}\n"
             ])
 
         # disc sheet
@@ -154,11 +166,11 @@ class pdc_presim:
             disc_r = row["resistance"]
 
             self.add_tcl_commands.extend([
-                f"if {{\n",
+                "if {\n",
                 f"    [catch {{sigrity::add pdcInter -auto -ckt {{{disc_refdes}}} -resistance {{{disc_r}}} {{!}}}}]\n",
-                f"}} {{\n",
+                "} {\n",
                 f"    lappend error_DISC {{{disc_refdes}}}\n",
-                f"}}\n"
+                "}\n"
             ])
 
         self.classify_tcl_commands.extend([
@@ -187,11 +199,11 @@ class pdc_presim:
 
 
 # PowerSI
-class psi_presim:
+class PsiPresim:
     def __init__(self, GND_NAME, ETL_FILE_PATH):
         # 상수
         self.gnd = GND_NAME
-        self.etl_file_path = ETL_FILE_PATH
+        self.etl_file_path = Path(ETL_FILE_PATH)
 
         # 변수
         self.dfs = dict()
@@ -209,12 +221,7 @@ class psi_presim:
     def initialize(self):
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 실행 중")
 
-        # 엑셀 파일 읽기 (xlwings)
-        app = xw.App(visible=False)
-        wb = app.books.open(self.etl_file_path)
-        self.dfs = {sheet.name: sheet.used_range.options(pd.DataFrame, header=1, index=False).value.apply(lambda x: x.map(str)) for sheet in wb.sheets}
-        wb.close()
-        app.quit()
+        self.dfs = _read_excel(self.etl_file_path)
 
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 완료")
         return None
@@ -235,16 +242,19 @@ class psi_presim:
                 df["net"].apply(lambda x: nets.update(x.split(",")))
 
         for net in nets:
-            self.classify_tcl_commands.append(f" if {{[catch {{sigrity::move net {{PowerNets}} {{{net}}} {{!}}}}]}} {{\n lappend error_nets {{{net}}}\n}}\n")
-            self.classify_tcl_commands.append(f"catch {{sigrity::update net {{PowerGndPair}} {{{self.gnd}}} {{{net}}} {{!}}}}\n")
+            self.classify_tcl_commands.append(
+                f" if {{[catch {{sigrity::move net {{PowerNets}} {{{net}}} {{!}}}}]}} {{\n lappend error_nets {{{net}}}\n}}\n"
+            )
+            self.classify_tcl_commands.append(
+                f"catch {{sigrity::update net {{PowerGndPair}} {{{self.gnd}}} {{{net}}} {{!}}}}\n"
+            )
         self.classify_tcl_commands.extend([
-            f"sigrity::save {{!}}\n",
+            "sigrity::save {¡}\n",
             "puts \n\"=============================================\"\n",
             "puts \"Error Nets : $error_nets\"\n",
             "puts \n\"=============================================\"\n"
         ])
 
-        print(nets)
         logger.info(f"{self.__class__.__name__} : {inspect.currentframe().f_code.co_name} 완료")
         return None
 
@@ -267,30 +277,30 @@ class psi_presim:
             vrm_port = f"VRM_{vrm_refdes}_{vrm_net}"
 
             self.add_tcl_commands.extend([
-                f"if  {{\n",
-                f"    [catch {{sigrity::add port -name {{{vrm_port}}} {{!}}}}]\n",
-                f"}} {{\n",
+                "if  {\n",
+                f"    [catch {{sigrity::add port -name {{{vrm_port}}} {{¡}}}}]\n",
+                "} {\n",
                 f"    lappend error_ports {{{vrm_port}}}\n",
-                f"}}\n",
-                f"catch {{sigrity::update -name {{{vrm_port}}} -refZ {{1}} {{!}}}}\n"
+                "}\n",
+                f"catch {{sigrity::update -name {{{vrm_port}}} -refZ {{1}} {{¡}}}}\n"
             ])
 
             for pp in vrm_pps.split(","):
                 self.add_tcl_commands.extend([
-                    f"if  {{\n",
-                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -pn {{{pp}}} {{!}}}}]\n",
-                    f"}} {{\n",
+                    "if  {\n",
+                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -pn {{{pp}}} {{¡}}}}]\n",
+                    "} {\n",
                     f"    lappend error_pins {{{pp}}}\n",
-                    f"}}\n"
+                    "}\n"
                 ])
 
-            for np in vrm_nps.split(","):
+            for np_val in vrm_nps.split(","):
                 self.add_tcl_commands.extend([
-                    f"if  {{\n",
-                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -nn {{{np}}} {{!}}}}]\n",
-                    f"}} {{\n",
-                    f"    lappend error_pins {{{np}}}\n",
-                    f"}}\n"
+                    "if  {\n",
+                    f"    [catch {{sigrity::hook port -name {{{vrm_port}}} -c {{{vrm_refdes}}} -nn {{{np_val}}} {{¡}}}}]\n",
+                    "} {\n",
+                    f"    lappend error_pins {{{np_val}}}\n",
+                    "}\n"
                 ])
 
         # sink sheet
@@ -299,33 +309,35 @@ class psi_presim:
             sink_net = row["net"]
             sink_pps = row["pp"]
             sink_nps = row["np"]
-            sink_port = f"VRM_{sink_refdes}_{sink_net}" + (f"_P{int(float(row["port"]))}" if not pd.isna(row["port"]) else "")
+            sink_port = f"VRM_{sink_refdes}_{sink_net}" + (
+                f"_P{int(float(row['port']))}" if pd.notna(row["port"]) else ""
+            )
 
             self.add_tcl_commands.extend([
-                f"if  {{\n",
-                f"    [catch {{sigrity::add port -name {{{sink_port}}} {{!}}}}]\n",
-                f"}} {{\n",
+                "if  {\n",
+                f"    [catch {{sigrity::add port -name {{{sink_port}}} {{¡}}}}]\n",
+                "} {\n",
                 f"    lappend error_ports {{{sink_port}}}\n",
-                f"}}\n",
-                f"catch {{sigrity::update -name {{{sink_port}}} -refZ {{1}} {{!}}}}\n"
+                "}\n",
+                f"catch {{sigrity::update -name {{{sink_port}}} -refZ {{1}} {{¡}}}}\n"
             ])
 
             for pp in sink_pps.split(","):
                 self.add_tcl_commands.extend([
-                    f"if  {{\n",
-                    f"    [catch {{sigrity::hook port -name {{{sink_port}}} -c {{{sink_refdes}}} -pn {{{pp}}} {{!}}}}]\n",
-                    f"}} {{\n",
+                    "if  {\n",
+                    f"    [catch {{sigrity::hook port -name {{{sink_port}}} -c {{{sink_refdes}}} -pn {{{pp}}} {{¡}}}}]\n",
+                    "} {\n",
                     f"    lappend error_pins {{{pp}}}\n",
-                    f"}}\n"
+                    "}\n"
                 ])
 
             for np in sink_nps.split(","):
                 self.add_tcl_commands.extend([
-                    f"if  {{\n",
+                    "if  {\n",
                     f"    [catch {{sigrity::hook port -name {{{sink_port}}} -c {{{sink_refdes}}} -nn {{{np}}} {{!}}}}]\n",
-                    f"}} {{\n",
+                    "} {\n",
                     f"    lappend error_pins {{{np}}}\n",
-                    f"}}\n"
+                    "}\n"
                 ])
 
         self.classify_tcl_commands.extend([
@@ -352,11 +364,11 @@ class psi_presim:
             nc_comp = row["refdes"]
 
             self.nc_tcl_commands.extend([
-                f"if  {{\n",
-                f"    [catch {{sigrity::update circuit -model {{disable}} {{{nc_comp}}} {{!}}}}]\n",
-                f"}} {{\n",
+                "if  {\n",
+                f"    [catch {{sigrity::update circuit -model {{disable}} {{{nc_comp}}} {{¡}}}}]\n",
+                "} {\n",
                 f"    lappend error_components {{{nc_comp}}}\n",
-                f"}}\n"
+                "}\n"
             ])
 
         self.classify_tcl_commands.extend([

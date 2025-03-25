@@ -1,5 +1,5 @@
 import logging
-from presim import *
+from presim import PdcPresim, PsiPresim
 from postsim import *
 
 def setup_logger():
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     REPORT_FILE_PATH = ""
     REPORT_FOLDER_PATH = ""
 
-    # 함수
-    pdc_presim(GND_NAME, ETL_PDC_FILE_PATH)
-    psi_presim(GND_NAME, ETL_PSI_FILE_PATH)
+    # 함수 호출
+    PdcPresim(GND_NAME, ETL_PDC_FILE_PATH)
+    PsiPresim(GND_NAME, ETL_PSI_FILE_PATH)
     pdc_postsim(REPORT_FILE_PATH, REPORT_FOLDER_PATH)
